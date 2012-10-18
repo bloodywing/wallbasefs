@@ -10,4 +10,4 @@ setup(name="wallbasefs",
       author_email="muffin@tastyespresso.de",
       url="https://github.com/bloodywing",
       packages=["wallbasefs"],
-      install_requires=["requests", "fuse"])
+      install_requires=["requests", "fuse-python", "configobj"])
