@@ -104,7 +104,7 @@ class WallbaseFS(fuse.Fuse):
     def __init__(self, *args, **kw):
         fuse.Fuse.__init__(self, *args, **kw)
         self.big_writes = True
-        self.sync_read = True
+        #thread.start_new_thread(self.mythread, ())
         self.parser.add_option(mountopt="user", help="Your Wallbase.cc Username")
         self.parser.add_option(mountopt="password", help="Your Wallbase.cc Password")
         print "Init complete"
@@ -272,10 +272,13 @@ class WallbaseFS(fuse.Fuse):
         return -errno.ENOSYS
 
 
-if __name__ == "__main__":
+def main():
     fuse.fuse_python_api = (0, 2)
+    fuse.feature_assert('stateful_files', 'has_init')
     
     fs = WallbaseFS()
     fs.parse(errex=1)
     fs.multithreaded = True
     fs.main()
+
+if __name__ == "__main__": main()
