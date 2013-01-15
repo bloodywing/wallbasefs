@@ -53,7 +53,7 @@ class RootInfo(fuse.Stat):
     @property
     def favorites(self):
         if not self._favorites:
-            for f in self._favoritesobj._Favorites__get_favorites_catalogues():
+            for f in self._favoritesobj.get_favorites_catalogues():
                 self._favorites[f[1]] = FavoriteInfo(self._favoritesobj, f)
         return self._favorites
 
@@ -70,13 +70,13 @@ class FavoriteInfo(fuse.Stat):
         self._folder = f
         self._images = {}
         wallpaper = wallbase.Wallpaper()
-        wallpaper._Wallbase__do_login(user, password)
+        wallpaper.do_login(user, password)
         self._wallpaper = wallpaper
 
     @property
     def images(self):
         if not self._images:
-            for i in self._directory._Favorites__get_wallpapers_for_catalogue(self._folder[0]):
+            for i in self._directory.get_wallpapers_for_catalogue(self._folder[0]):
                 imageinfo = ImagesInfo(self._folder[0], self._wallpaper, i)
                 print "*** Get Image", i[0]
                 self._images["%s-%s.%s" % (
@@ -88,7 +88,7 @@ class ImagesInfo(fuse.Stat):
     def __init__(self, folderid, wallpaper, f):
         fuse.Stat.__init__(self)
         self._wallpaper = wallpaper
-        self._link = self._wallpaper._Wallpaper__get_wallpaper(f[0], folderid)
+        self._link = self._wallpaper.get_wallpaper(f[0], folderid)
         self.st_mode = stat.S_IFREG | 0644
         self.st_nlink = 1
         head = requests.head(self._link["url"])
@@ -140,7 +140,7 @@ class WallbaseFS(fuse.Fuse):
             password = cfg["pass"]
 
         self.favorites = wallbase.Favorites()
-        self.favorites._Wallbase__do_login(user, password)
+        self.favorites.do_login(user, password)
 
         self.root = RootInfo(self.favorites)
 

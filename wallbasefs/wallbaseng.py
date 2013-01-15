@@ -33,7 +33,7 @@ class Wallbase(object):
         self.headers = {"X-Requested-With": "XMLHttpRequest",
                         "Referer": baseurl + "user/favorites/-1/"}
 
-    def __do_login(self, user, passwd):
+    def do_login(self, user, passwd):
         payload = {"nopass": "0",
                    "pass": unicode(passwd),
                    "usrname": unicode(user)
@@ -47,8 +47,7 @@ class Dynamics(Wallbase):
     """
     Needs Rework, this is really bugged now
     """
-    def __get_dynamics(self, searchstring, purify):
-        print purify
+    def get_dynamics(self, searchstring, purify):
         payload = {"aspect": "0",
                    "board": "213",
                    "nsfw_nsfw": int(purify.get("nsfw")),
@@ -82,7 +81,7 @@ class Dynamics(Wallbase):
 
 
 class Favorites(Wallbase):
-    def __get_favorites_catalogues(self):
+    def get_favorites_catalogues(self):
         resp = requests.get(
             url=baseurl + "user/favorites/-1/" + str(
                 random.randint(1, 1000)),
@@ -101,14 +100,14 @@ class Favorites(Wallbase):
 
         return self.catalogues
 
-    def __add_collection(self, name):
+    def add_collection(self, name):
         resp = requests.post(
             url=baseurl + "user/favorites_new/collection/" +
             str(random.randint(1, 1000)),
             headers=self.headers, cookies=self.COOKIE, data={"permissions": 1, "title": name})
         return None
 
-    def __get_wallpapers_for_catalogue(self, fav_id):
+    def get_wallpapers_for_catalogue(self, fav_id):
         total_wp = 0
         for cats in self.catalogues:
             if cats[0] == fav_id and cats[0] != u"-1":
@@ -151,7 +150,7 @@ class Favorites(Wallbase):
                 offset += 40
         return wallpaper
 
-    def __create_directories(self, basepath):
+    def _create_directories(self, basepath):
         for collection in self.catalogues:
             try:
                 if not os.path.exists(os.path.join(basepath, collection[-2])):
@@ -161,7 +160,7 @@ class Favorites(Wallbase):
 
 
 class Wallpaper(Wallbase):
-    def __get_wallpaper(self, id, cat_dir):
+    def get_wallpaper(self, id, cat_dir):
         self.parser = WallpaperParser()
         url = baseurl + "wallpaper/%s" % id
         resp = requests.get(url, cookies=self.COOKIE, prefetch=True)
