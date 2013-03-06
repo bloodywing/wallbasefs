@@ -38,7 +38,9 @@ class Wallbase(object):
                    "pass": unicode(passwd),
                    "usrname": unicode(user)
                    }
-        r = requests.post(baseurl + "user/login", data=payload)
+        self.COOKIE = requests.get(baseurl + "home").cookies
+        r = requests.post(baseurl + "user/login", data=payload, 
+            cookies=self.COOKIE, allow_redirects=False)
         self.COOKIE = r.cookies
         return None
 
@@ -97,7 +99,6 @@ class Favorites(Wallbase):
         for cat in favorites[0]:
             self.catalogues.append([cat[0].get("coll_id"), cat[0].get(
                 "coll_title"), cat[0].get("fav_count")])
-
         return self.catalogues
 
     def add_collection(self, name):
@@ -163,7 +164,7 @@ class Wallpaper(Wallbase):
     def get_wallpaper(self, id, cat_dir):
         self.parser = WallpaperParser()
         url = baseurl + "wallpaper/%s" % id
-        resp = requests.get(url, cookies=self.COOKIE, prefetch=True)
+        resp = requests.get(url, cookies=self.COOKIE)
         self.parser.feed(resp.content)
         if self.parser.wallpaperurl:
             result = dict({"url": self.parser.wallpaperurl,

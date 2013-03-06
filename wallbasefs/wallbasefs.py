@@ -103,7 +103,7 @@ class ImagesInfo(fuse.Stat):
     def content(self):
         if self._content is None:
             print "**** Realimagesize", self.st_size
-            r = requests.get(self._link["url"], prefetch=False)
+            r = requests.get(self._link["url"])
             self._content = r.content
         return self._content
 
