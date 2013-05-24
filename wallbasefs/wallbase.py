@@ -6,7 +6,6 @@
 import re
 import base64
 import requests
-from math import ceil
 from random import randint
 from HTMLParser import HTMLParser
 
@@ -61,8 +60,7 @@ class Wallbase(object):
         wallpapers = []
         page_offset = 0
         collection = self.collections.get_by_cid(cid)
-        pages = ceil(collection.fav_count / 40.0)
-
+        
         if not collection.wallpapers:
             while True:
                 response = session.get("%suser/favorites/%d/%d/0/666" % (
@@ -74,12 +72,15 @@ class Wallbase(object):
                     json = response.json().pop()
                     for wallpaper in json:
                         w = wallpaper.pop()
-                        tags = w["wall_tags"].split("|")[0::4]
+                        try:
+                            tags = w["wall_tags"].split("|")[0::4]
+                        except AttributeError:
+                            tags = []
                         collection.wallpapers.append(
                                 Wallpaper(wid=int(w[
                                           "wall_id"]), cid=cid, wall_cat_dir=w["wall_cat_dir"], wall_imgtype=int(w["wall_imgtype"]), tags=tags)
                         )
-                        page_offset += 40
+                    page_offset += 40
         return collection.wallpapers
 
 
