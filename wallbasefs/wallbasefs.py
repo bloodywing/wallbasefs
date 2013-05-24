@@ -1,294 +1,117 @@
 #!/usr/bin/env python
-import fuse
 
-import stat
 import os
-import time
-import errno
-import requests
-import configobj
-import wallbaseng as wallbase
+import stat
+from configobj import ConfigObj
+from time import time
+from multiprocessing import Pipe, Process
+from sys import argv, exit
+from wallbase import Wallbase
+from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
 
-# wallbasefs can use a config file
-# look at the README to see what needs to be inside
-cfg = configobj.ConfigObj(os.path.expanduser("~/.wallbasesync"))
-user = ""
-password = ""
-
-_file_timestamp = int(time.time())
+cfg = ConfigObj(os.path.expanduser("~/.wallbasesync"))
 
 
-def getDepth(path):
-    print "*** Depth", path
-    if path == '/':
-        return 0
-    else:
-        return path.count('/')
+class Wallbasefs(LoggingMixIn, Operations):
 
+    def __init__(self, username, password):
 
-def getParts(path):
-    if path == '/':
-        return [['/']]
-    else:
-        return path.split('/')
+        if not username:
+            username = cfg["user"]
 
+        if not password:
+            password = cfg["password"]
 
-def loadfavorites(catalogues):
-    l = dict()
-    for directory in catalogues:
-        l[directory[1]] = {"size": directory[-1], "id": directory[
-            0], "is_dir": True}  # 0 is the favorites folder id
-    return l
+        self.wb = Wallbase(username, password)
+        self.wb.get_collections()
+        self.files = {}
+        self.p_conn, c_conn = Pipe()
+        p = Process(target=self.wallpaper_worker, args=(c_conn,))
+        p.start()
 
+    def __call__(self, op, path, *args):
+        return super(Wallbasefs, self).__call__(op, path, *args)
 
-class RootInfo(fuse.Stat):
-    def __init__(self, favorites):
-        fuse.Stat.__init__(self)
-        self.st_mode = stat.S_IFDIR | 0755
-        self.st_nlink = 2
-        self._favorites = {}
-        self._favoritesobj = favorites
+    def wallpaper_worker(self, conn):
+        files = {}
+        print "working ...."
+        for c in self.wb.collections:
+            for w in self.wb.get_wallpapers_by_cid(c.cid):
+                name = unicode("_").join(w.tags)[:200] + "_%s.%s" % (unicode(w.wid), w.extension)
+                if not files.has_key("/%s/%s" % (c.name , name)):
+                    files["/%s/%s" % (c.name , name)] = dict()
+                attrs = files["/%s/%s" % (c.name , name)].setdefault('attr', {})
+                attrs["blob"] = w.blob
+                attrs["size"] = len(attrs["blob"])
+            conn.send(files)
+        conn.close()
+                
 
-    @property
-    def favorites(self):
-        if not self._favorites:
-            for f in self._favoritesobj.get_favorites_catalogues():
-                self._favorites[f[1]] = FavoriteInfo(self._favoritesobj, f)
-        return self._favorites
-
-
-class FavoriteInfo(fuse.Stat):
-    def __init__(self, favoritesobj, f):
-        fuse.Stat.__init__(self)
-        self.st_atime = _file_timestamp
-        self.st_mtime = _file_timestamp
-        self.st_ctime = _file_timestamp
-        self.st_mode = stat.S_IFDIR | 0755
-        self.st_nlink = 2
-        self._directory = favoritesobj
-        self._folder = f
-        self._images = {}
-        wallpaper = wallbase.Wallpaper()
-        wallpaper.do_login(user, password)
-        self._wallpaper = wallpaper
-
-    @property
-    def images(self):
-        if not self._images:
-            for i in self._directory.get_wallpapers_for_catalogue(self._folder[0]):
-                imageinfo = ImagesInfo(self._folder[0], self._wallpaper, i)
-                print "*** Get Image", i[0]
-                self._images["%s-%s.%s" % (
-                    self._folder[1], i[0], imageinfo.st_type)] = imageinfo
-        return self._images
-
-
-class ImagesInfo(fuse.Stat):
-    def __init__(self, folderid, wallpaper, f):
-        fuse.Stat.__init__(self)
-        self._wallpaper = wallpaper
-        self._link = self._wallpaper.get_wallpaper(f[0], folderid)
-        self.st_mode = stat.S_IFREG | 0644
-        self.st_nlink = 1
-        head = requests.head(self._link["url"])
-        self.st_type = str(head.headers['content-type'].split("/")[1])
-        self.st_size = int(head.headers["content-length"])
-        self.st_atime = _file_timestamp
-        self.st_mtime = _file_timestamp
-        self.st_ctime = _file_timestamp
-        self._content = None
-
-    @property
-    def content(self):
-        if self._content is None:
-            print "**** Realimagesize", self.st_size
-            r = requests.get(self._link["url"])
-            self._content = r.content
-        return self._content
-
-
-class WallbaseFS(fuse.Fuse):
-
-    def __init__(self, *args, **kw):
-        fuse.Fuse.__init__(self, *args, **kw)
-        self.big_writes = True
-        #thread.start_new_thread(self.mythread, ())
-        self.parser.add_option(
-            mountopt="user", help="Your Wallbase.cc Username")
-        self.parser.add_option(
-            mountopt="password", help="Your Wallbase.cc Password")
-        print "Init complete"
-
-    def fsinit(self):
-
-        print "Calling fsinit"
-
-        global user
-        global password
-
-        self.user = self.cmdline[0].user
-        self.password = self.cmdline[0].password
-        if self.user:
-            user = self.user
-        else:
-            user = cfg["user"]
-
-        if self.password:
-            password = self.password
-        else:
-            password = cfg["pass"]
-
-        self.favorites = wallbase.Favorites()
-        self.favorites.do_login(user, password)
-
-        self.root = RootInfo(self.favorites)
-
-    def split_path(self, path):
+    def getattr(self, path, fh=None):
+        print "*** getattr", path, fh
         if path == "/":
-            return (None, None)
-
-        parts = path.split('/')[1:]
-        if len(parts) == 1:
-            return (parts[0], None)
+            st = os.lstat(path)
+            return dict(
+                (key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
+                                                    'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+        elif path.endswith("png") or path.endswith("jpg"):
+            st_size = self.getxattr(path, "size")
+            return dict(st_mode=stat.S_IFREG | 0644, st_nlink=1, st_size=st_size)
         else:
-            return parts
+            return dict(st_mode=stat.S_IFDIR | 0644, st_nlink=1, st_size=0)
 
-    def getattr(self, path):
-        print '*** getattr', path
+    def getxattr(self, path, name, position=0):
+        print "*** getxattr", path, name, position
+        attrs = self.files[path].get("attr", {})
+        try:
+            return attrs[name]
+        except KeyError:
+            return "" 
 
-        favfolder, image = self.split_path(path)
+    def listxattr(self, path):
+        print "*** listxattr", path
+        attrs = self.files[path].get("attr", {})
+        return attrs.keys()
 
-        if favfolder is None:
-            stat = self.root
-        else:
-            print "*** Not Root", favfolder
-            stat = self.root.favorites.get(favfolder)
-            if not stat:
-                return -errno.ENOENT
-            if image:
-                stat = stat.images.get(image)
-                if not stat:
-                    return -errno.ENOENT
-        return stat
-
-    def getdir(self, path):
-        print '*** getdir', path
-        return -errno.ENOSYS
-
-    def mythread(self):
-        print '*** mythread'
-        return -errno.ENOSYS
-
-    def chmod(self, path, mode):
-        print '*** chmod', path, oct(mode)
-        return -errno.ENOSYS
-
-    def chown(self, path, uid, gid):
-        print '*** chown', path, uid, gid
-        return -errno.ENOSYS
-
-    def fsync(self, path, isFsyncFile):
-        print '*** fsync', path, isFsyncFile
-        return -errno.ENOSYS
-
-    def link(self, targetPath, linkPath):
-        print '*** link', targetPath, linkPath
-        return -errno.ENOSYS
-
-    def mkdir(self, path, mode):
-        print '*** mkdir', path, oct(mode)
-        return -errno.ENOSYS
-
-    def mknod(self, path, mode, dev):
-        print '*** mknod', path, oct(mode), dev
-        return -errno.ENOSYS
-
-    def open(self, path, flags):
-        print '*** open', path, flags
-        access_flags = os.O_RDONLY | os.O_RDWR
-        if flags & access_flags != os.O_RDONLY:
-            print "Error", access_flags
-            return -errno.EACCES
-        else:
-            return 0
+    def setxattr(self, path, name, value, options, position=0):
+        print "*** setxattr", path, name, value, options, position
 
     def read(self, path, size, offset, fh=None):
         print '*** read', path, size, offset, fh
-        favfolder, image = self.split_path(path)
-        print "Image:", image
-        print "Favorites:", favfolder
-        imageinfo = self.root.favorites[favfolder].images[image]
-        print "Offset", offset
-        print "Size", imageinfo.st_size
-        if imageinfo.st_size:
-            print "Here is your image"
-            content = imageinfo.content[offset:offset + size]
-            return content
-        else:
-            return ''
+        blob = self.getxattr(path, "blob")
+        return blob[offset:offset + size]
 
-    def readdir(self, path, offset):
-        yield fuse.Direntry(".")
-        yield fuse.Direntry("..")
+    def readdir(self, path, fh):
+        print "*** readdir", path, fh
+        while self.p_conn.poll():
+            self.files.update(self.p_conn.recv())
+        entries = [".", ".."]
         if path == "/":
-            entries = self.root.favorites.keys()
+            return entries + [
+                c.name.encode("utf-8") for c in self.wb.collections
+            ]
         else:
-            entries = self.root.favorites[path[1:]].images.keys()
+            for c in self.wb.collections:
+                if c.name == path[1:]:
+                    wallpapers = self.wb.get_wallpapers_by_cid(c.cid)
+                    for w in wallpapers:
+                        name = unicode("_").join(w.tags)[:200] + "_%s.%s" % (unicode(w.wid), w.extension)
+                        entries.append(name)
+                        if not self.files.has_key("%s/%s" % (path , name)):
+                            self.files["%s/%s" % (path , name)] = dict()
+                        attrs = self.files["%s/%s" % (path , name)].setdefault('attr', {})
+                        attrs["wid"] = w.wid
+                        attrs["tags"] = w.tags
 
-        for e in entries:
-            yield fuse.Direntry(str(e))
-
-    def readlink(self, path):
-        print '*** readlink', path
-        return -errno.ENOSYS
-
-    def release(self, path, flags):
-        print '*** release', path, flags
-        return -errno.ENOSYS
-
-    def rename(self, oldPath, newPath):
-        print '*** rename', oldPath, newPath
-        return -errno.ENOSYS
-
-    def rmdir(self, path):
-        print '*** rmdir', path
-        return -errno.ENOSYS
-
-    def statfs(self):
-        print '*** statfs'
-        stats = fuse.StatVfs()
-        return stats
-
-    def symlink(self, targetPath, linkPath):
-        print '*** symlink', targetPath, linkPath
-        return -errno.ENOSYS
-
-    def truncate(self, path, size):
-        print '*** truncate', path, size
-        return -errno.ENOSYS
-
-    def unlink(self, path):
-        print '*** unlink', path
-        return -errno.ENOSYS
-
-    def utime(self, path, times):
-        print '*** utime', path, times
-        return -errno.ENOSYS
-
-    def write(self, path, buf, offset):
-        print '*** write', path, buf, offset
-        return -errno.ENOSYS
-
-
-def main():
-    fuse.fuse_python_api = (0, 2)
-    fuse.feature_assert('stateful_files', 'has_init')
-
-    fs = WallbaseFS()
-    fs.parse(errex=1)
-    fs.multithreaded = True
-    fs.main()
+                        if not attrs.has_key("blob"):
+                            attrs["blob"] = w.blob
+                            attrs["size"] = len(attrs["blob"])
+                    return entries
 
 if __name__ == "__main__":
-    main()
+    if len(argv) != 4:
+        print("Usage: %s <username> <password> <mountpoint>" % argv[0])
+        exit(1)
+
+    fuse = FUSE(Wallbasefs(argv[1], argv[2]), argv[3], foreground=True)
