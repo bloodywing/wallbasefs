@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(name="wallbasefs",
-      version="0.1a",
+      version="0.2",
       provides=['wallbasefs'],
       description="A Fuse Filesystem that mounts your wallbase.cc favorites",
       author="Pierre Geier 'epicmuffin'",
@@ -16,4 +16,4 @@ setup(name="wallbasefs",
             ]
       },
       license = "Emailware",
-      install_requires=["requests", "fuse-python", "configobj"])
+      install_requires=["requests", "fusepy", "configobj"])
