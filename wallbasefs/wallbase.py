@@ -53,6 +53,15 @@ class Wallbase(object):
                         fav_count=int(collection_dict["fav_count"])))
         return self.collections
 
+    def add_collection(self, collname, permission=0):
+        response = session.post(
+            "%suser/favorites_new/collection/%d" % (URL, randint(1,1000)), data={"title": collname, "permissions": permission}, headers=jsonheaders, allow_redirects=False)
+        if response.status_code == 200:
+            return True
+        else:
+            return False
+
+
     def get_wallpapers_by_cid(self, cid):
 
         if not len(self.collections):
