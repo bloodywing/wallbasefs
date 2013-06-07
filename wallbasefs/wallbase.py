@@ -25,6 +25,7 @@ class Wallbase(object):
            password (str): The Users Password
         """
         self.collections = CollectionsList()
+        self.searchbags = SearchbagList()
         self._login(username, password)
                     #  First thing we need to do: log the user in
 
@@ -60,6 +61,53 @@ class Wallbase(object):
         else:
             return False
 
+    def search(self, query, page=None, **kwargs):
+        """Search for something on wallbase.cc this can be a normal String or a tag like "tag:12345"
+
+        >>> search("batman", nsfw_nsfw=1, nsfw_sfw=1, nsfw_sketchy=1)
+        """
+
+        page_offset = 0
+        data = dict(
+            query=query,
+            thpp=100
+        )
+
+        data.update(kwargs)
+
+        searchbag = Searchbag(query)
+        self.searchbags.append(searchbag)
+
+        if not searchbag.wallpapers:
+            while True:
+
+                if page is not None:
+                    page_offset = page * data.get("thpp")
+
+                response = session.post(
+                    "%ssearch/%d" % (URL, page_offset), data=data, headers=jsonheaders
+                )
+
+                if not len(response.json()):
+                    return searchbag.wallpapers
+                else:
+                    json = response.json()
+                    for w in json:
+                        if w is not None:
+                            try:
+                                tags = w["attrs"]["wall_tags"].split("|")[0::4]
+                            except AttributeError:
+                                tags = []
+                            searchbag.wallpapers.append(
+                                Wallpaper(wid=int(w["id"]), cid=int(w["attrs"]["wall_cat_id"]), wall_imgtype=int(w["attrs"]["wall_imgtype"]), tags=tags)
+                            )
+                        else:
+                            return searchbag.wallpapers
+                    page_offset += data.get("thpp")
+                
+                if page is not None:
+                    return searchbag.wallpapers
+        return searchbag.wallpapers
 
     def get_wallpapers_by_cid(self, cid):
 
@@ -69,7 +117,7 @@ class Wallbase(object):
         wallpapers = []
         page_offset = 0
         collection = self.collections.get_by_cid(cid)
-        
+
         if not collection.wallpapers:
             while True:
                 response = session.get("%suser/favorites/%d/%d/0/666" % (
@@ -103,6 +151,11 @@ class CollectionsList(list):
             if c.cid == cid:
                 return c
 
+class SearchbagList(list):
+    def get_by_query(self, query):
+        for q in self:
+            if q.query == query:
+                return q
 
 class Collection(object):
 
@@ -117,9 +170,23 @@ class Collection(object):
         return "<%d, %s>" % (self.cid, self.name)
 
 
+class Searchbag(object):
+
+    def __init__(self, query):
+        self.query = query
+        self.wallpapers = []
+
+    @property
+    def wallpaper_count(self):
+        return len(self.wallpapers)
+
+    def __repr__(self):
+        return "<%s, %d>" % (self.query, self.wallpaper_count)
+
+
 class Wallpaper(object):
 
-    def __init__(self, wid, cid, wall_cat_dir, wall_imgtype=1, tags=[]):
+    def __init__(self, wid, cid, wall_cat_dir="Unknown", wall_imgtype=1, tags=[]):
         self.wid = wid
         self.cid = cid
         self.wall_cat_dir = wall_cat_dir
@@ -133,7 +200,6 @@ class Wallpaper(object):
         else:
             return "jpg"
 
-
     @property
     def blob(self):
         return session.get(self.url).content
@@ -146,6 +212,17 @@ class Wallpaper(object):
         if parser.wallpaperurl:
             return parser.wallpaperurl
 
+    @property
+    def dict(self):
+        return dict(
+            wid=self.wid,
+            cid=self.cid,
+            wall_cat_dir=self.wall_cat_dir,
+            wall_imgtype=self.wall_imgtype,
+            tags=self.tags,
+            url=self.url,
+            extension=self.extension
+        )
 
 class WallpaperParser(HTMLParser):
 
