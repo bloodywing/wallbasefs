@@ -14,14 +14,15 @@ cfg = ConfigObj(os.path.expanduser("~/.wallbasesync"))
 
 
 class Wallbasefs(LoggingMixIn, Operations):
+
     """
-    
+
     In order to use this class properly you need to have
     a wallbase.cc account. Loading your favorites can be really
     slow depending on your internet speed and the size of your
     favorites.
 
-    """    
+    """
     def __init__(self, username, password):
 
         if not username:
@@ -48,15 +49,16 @@ class Wallbasefs(LoggingMixIn, Operations):
         print "working ...."
         for c in self.wb.collections:
             for w in self.wb.get_wallpapers_by_cid(c.cid):
-                name = unicode("_").join(w.tags)[:200] + "_%s.%s" % (unicode(w.wid), w.extension)
-                if not files.has_key("/%s/%s" % (c.name , name)):
-                    files["/%s/%s" % (c.name , name)] = dict()
-                attrs = files["/%s/%s" % (c.name , name)].setdefault('attr', {})
+                name = unicode("_").join(w.tags)[
+                               :200] + "_%s.%s" % (unicode(w.wid), w.extension)
+                if not files.has_key("/%s/%s" % (c.name, name)):
+                    files["/%s/%s" % (c.name, name)] = dict()
+                attrs = files["/%s/%s" % (
+                    c.name, name)].setdefault('attr', {})
                 attrs["blob"] = w.blob
                 attrs["size"] = len(attrs["blob"])
             conn.send(files)
         conn.close()
-                
 
     def getattr(self, path, fh=None):
         print "*** getattr", path, fh
@@ -77,7 +79,7 @@ class Wallbasefs(LoggingMixIn, Operations):
         try:
             return attrs[name]
         except KeyError:
-            return "" 
+            return ""
 
     def listxattr(self, path):
         print "*** listxattr", path
@@ -106,11 +108,13 @@ class Wallbasefs(LoggingMixIn, Operations):
                 if c.name == path[1:]:
                     wallpapers = self.wb.get_wallpapers_by_cid(c.cid)
                     for w in wallpapers:
-                        name = unicode("_").join(w.tags)[:200] + "_%s.%s" % (unicode(w.wid), w.extension)
+                        name = unicode("_").join(w.tags)[
+                                       :200] + "_%s.%s" % (unicode(w.wid), w.extension)
                         entries.append(name)
-                        if not self.files.has_key("%s/%s" % (path , name)):
-                            self.files["%s/%s" % (path , name)] = dict()
-                        attrs = self.files["%s/%s" % (path , name)].setdefault('attr', {})
+                        if not self.files.has_key("%s/%s" % (path, name)):
+                            self.files["%s/%s" % (path, name)] = dict()
+                        attrs = self.files["%s/%s" % (
+                            path, name)].setdefault('attr', {})
                         attrs["wid"] = w.wid
                         attrs["tags"] = w.tags
 
@@ -119,9 +123,13 @@ class Wallbasefs(LoggingMixIn, Operations):
                             attrs["size"] = len(attrs["blob"])
                     return entries
 
-if __name__ == "__main__":
+
+def main():
     if len(argv) != 4:
-        print("Usage: %s <username> <password> <mountpoint>" % argv[0])
-        exit(1)
+            print("Usage: %s <username> <password> <mountpoint>" % argv[0])
+            exit(1)
 
     fuse = FUSE(Wallbasefs(argv[1], argv[2]), argv[3])
+
+if __name__ == "__main__":
+    main()    
