@@ -14,7 +14,14 @@ cfg = ConfigObj(os.path.expanduser("~/.wallbasesync"))
 
 
 class Wallbasefs(LoggingMixIn, Operations):
+    """
+    
+    In order to use this class properly you need to have
+    a wallbase.cc account. Loading your favorites can be really
+    slow depending on your internet speed and the size of your
+    favorites.
 
+    """    
     def __init__(self, username, password):
 
         if not username:
@@ -34,6 +41,9 @@ class Wallbasefs(LoggingMixIn, Operations):
         return super(Wallbasefs, self).__call__(op, path, *args)
 
     def wallpaper_worker(self, conn):
+        """
+        Tries to preload collections in background
+        """
         files = {}
         print "working ...."
         for c in self.wb.collections:
@@ -114,4 +124,4 @@ if __name__ == "__main__":
         print("Usage: %s <username> <password> <mountpoint>" % argv[0])
         exit(1)
 
-    fuse = FUSE(Wallbasefs(argv[1], argv[2]), argv[3], foreground=True)
+    fuse = FUSE(Wallbasefs(argv[1], argv[2]), argv[3])
